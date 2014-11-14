@@ -8,7 +8,7 @@
 
 # OPTFLAGS  =   -O2                                                             
 DEFINES   =
-INCLUDES  = 
+INCLUDES  =	-lcrafter
 CXXFLAGS  =	-g -std=c++11 -Wall -Wextra -pedantic $(DEFINES) $(OPTFLAGS) $(INCLUDES) 
 CXX       =	g++
 
