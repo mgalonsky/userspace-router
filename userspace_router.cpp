@@ -13,6 +13,23 @@ using namespace std;
 using namespace Crafter;
 
 
+
+struct HeaderFields
+{
+	string iface;
+	string sourceMAC;
+	string destMAC;
+};
+
+// Parses the file routing.config and sets up the routing tables accordingly
+void parseConfig();
+
+// ARP to complete setting up the tables
+void arp();
+
+map<string, string> destToNextHop;
+map<string, HeaderFields> nextHopToHeaderFields;
+
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
 
@@ -70,4 +87,64 @@ int main(int argc, char* argv[]){
 	//if possible get 1 that uses all interfaces and call caputre on it with -1
 	//otherwise will have to create a seperate sniffer for each interface and spawn each one before blocking to avoid finishing
 
+}
+
+void parseConfig(){
+	string line;
+	ifstream configFile("routing.config");
+	if (configFile.is_open())
+	{
+		while (getLine(ifstream, line))
+		{
+			string dest;
+			string nextHop;
+			string iface;
+
+			//Extract all three values from the line and put 
+			//them into their respective strings
+
+			size_t pos = line.find("|");
+			dest = line.substr(0, pos)
+			line.erase(0, pos+1);
+			pos = line.find("|");
+			nextHop = line.substr(0, pos);
+			line.erase(0, pos+1);
+			iface = line;
+
+			destToNextHop.emplace(dest, nextHop);
+
+			//Create a HeaderFields to store as much as possible without arping
+			HeaderFields newHeaderField;
+			newHeaderField.iface = iface;
+			newHeaderField.sourceMAC = GetMyMAC(iface);
+		}
+	}
+}
+
+void arp();
+{
+	Ethernet ethHeader;
+	ARP arpHeader;
+
+	for (auto curr_pair in nextHopToHeaderFields)
+	{
+		ethHeader.SetSourceMAC(curr_pair.second.sourceMAC);
+		ethHeader.SetDestinationMAC("ff:ff:ff:ff:ff:ff");
+
+		arpHeader.SetOperation(ARP::Request);
+		arpHeader.SetSenderIP(GetMyIP(curr_pair.second.iface));
+		arpHeader.SetSenderMAC(curr_pair.second.sourceMAC);
+		arpHeader.SetTargetIP(curr_pair.first);
+
+		Packet* packet = new Packet;
+
+		packet->PushLayer(ethHeader);
+		packet->PushLayer(arpHeader);
+
+		Packet* rcv = packet.SendRecv(curr_pair.second.iface);
+
+		ARP* arp_layer = rcv->GetLayer<ARP>();
+		curr_pair.second.destMAC = arp_layer->GetSenderMAC();
+
+	}
 }
