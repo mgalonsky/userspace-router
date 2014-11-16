@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string>
 #include <crafter.h>
-//will want to add pthread too
+#include <fstream>
 
 using namespace std;
 using namespace Crafter;
@@ -29,6 +29,7 @@ void arp();
 
 map<string, string> destToNextHop;
 map<string, HeaderFields> nextHopToHeaderFields;
+set<string> localIPs;
 
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
@@ -38,43 +39,47 @@ void packetHandler(Packet* packet, void* user){
 
 	if (ethHeader == nullptr) {
 		cout << "ethHeader was null" << endl;
-	}
-	else {
-		ethHeader->Print();
+		return;
 	}
 	if (ipHeader == nullptr) {
 		cout << "ipHeader was null" << endl;
+		return;
 	}
-	else {
-		ipHeader->Print();
+	
+	string DestIP = ipHeader->GetDestinationIP();
+
+	//check if local to this machine (if it is, return)
+	if (localIPs.find(DestIP) != localIPs.end()) {
+		return;
 	}
 
-	cout<<"--------------------------------------"<<endl;
+	auto destIter = destToNextHop.find(DestIP);
+	//see if DestIP is in our routing tables
+	if (destIter == destToNextHop.end()) {
+		//send ICMP for destination unreachable here
+		return;
+	}
+	
+	int ttl = ipHeader->GetTTL();
+	ttl--;
+	if(ttl == 0) {
+		//send ICMP for ttl=0 here
+		return;
+	}
+	ipHeader->SetTTL(ttl);
+	
+	auto headerIter = nextHopToHeaderFields.find(destIter->second);
+	if (headerIter == nextHopToHeaderFields.end()) {
+		//somehting is realy wrong with your config, but OK
+		return;
+	}
 
-    //Determine if it is an IP packet. If not then return
+	ethHeader->SetSourceMAC(headerIter->second.sourceMAC);
+	ethHeader->SetDestinationMAC(headerIter->second.destMAC);
 
-    //Determine if the destination IP is local to this computer. If yes, then return
-
-    //Is the destination *network* in your routing table, if not, send ICMP "Destination host unreachable", then return
-
-    //Decrement the TTL. If TTL=0, send ICMP for TTL expired and return.
-
-    //Find the next hop (gateway) for the destination *network* and look up the MAC address of that router
-
-    //Determine the outgoing interface and MAC address needed to reach the next-hop router
-//    OUT_IFACE="eth4"
-
-    //Modify the SRC and DST MAC addresses to match the outgoing interface and the DST MAC found above
-
-    //Update the IP header checksum
-
-    //Send the packet out the proper interface as required to reach the next hop router. Use:
-
-	//I think this call becomes pkt.send(iface)
-//    sendp(pkt, iface=OUT_IFACE)
+	packet->Send(headerIter->second.iface);
 }
 
-//Main code here...
 int main(int argc, char* argv[]){
 
 	string iface = argv[1];
@@ -94,7 +99,7 @@ void parseConfig(){
 	ifstream configFile("routing.config");
 	if (configFile.is_open())
 	{
-		while (getLine(ifstream, line))
+		while (getline(configFile, line))
 		{
 			string dest;
 			string nextHop;
@@ -104,35 +109,40 @@ void parseConfig(){
 			//them into their respective strings
 
 			size_t pos = line.find("|");
-			dest = line.substr(0, pos)
+			dest = line.substr(0, pos);
 			line.erase(0, pos+1);
 			pos = line.find("|");
 			nextHop = line.substr(0, pos);
 			line.erase(0, pos+1);
 			iface = line;
 
-			destToNextHop.emplace(dest, nextHop);
+			destToNextHop.insert(pair<string, string>(dest, nextHop));
 
 			//Create a HeaderFields to store as much as possible without arping
 			HeaderFields newHeaderField;
 			newHeaderField.iface = iface;
 			newHeaderField.sourceMAC = GetMyMAC(iface);
+
+			nextHopToHeaderFields.insert(pair<string, HeaderFields>(nextHop, newHeaderField));
 		}
 	}
 }
 
-void arp();
+void arp()
 {
 	Ethernet ethHeader;
 	ARP arpHeader;
 
-	for (auto curr_pair in nextHopToHeaderFields)
+	for (auto &curr_pair : nextHopToHeaderFields)
 	{
 		ethHeader.SetSourceMAC(curr_pair.second.sourceMAC);
 		ethHeader.SetDestinationMAC("ff:ff:ff:ff:ff:ff");
+		
+		string myIP = GetMyIP(curr_pair.second.iface);
+		localIPs.insert(myIP);
 
 		arpHeader.SetOperation(ARP::Request);
-		arpHeader.SetSenderIP(GetMyIP(curr_pair.second.iface));
+		arpHeader.SetSenderIP(myIP);
 		arpHeader.SetSenderMAC(curr_pair.second.sourceMAC);
 		arpHeader.SetTargetIP(curr_pair.first);
 
@@ -141,7 +151,7 @@ void arp();
 		packet->PushLayer(ethHeader);
 		packet->PushLayer(arpHeader);
 
-		Packet* rcv = packet.SendRecv(curr_pair.second.iface);
+		Packet* rcv = packet->SendRecv(curr_pair.second.iface);
 
 		ARP* arp_layer = rcv->GetLayer<ARP>();
 		curr_pair.second.destMAC = arp_layer->GetSenderMAC();
