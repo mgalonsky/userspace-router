@@ -38,6 +38,8 @@ set<string> ifaces;
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
 
+	string myIface = *(string*) user;
+
 	Ethernet* ethHeader = packet->GetLayer<Ethernet>();
 	IP* ipHeader = packet->GetLayer<IP>();
 
@@ -61,6 +63,20 @@ void packetHandler(Packet* packet, void* user){
 	//see if DestIP is in our routing tables
 	if (destIter == destToNextHop.end()) {
 		//send ICMP for destination unreachable here
+		ICMP icmpHeader;
+		icmpHeader.SetType(ICMP::DestinationUnreachable);
+		icmpHeader.SetIdentifier(RNG16());
+		IP icmpIPHeader;
+		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
+		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
+		Ethernet icmpEthHeader;
+		icmpEthHeader.SetSourceMAC(GetMyMAC(myIface));
+		icmpEthHeader.SetDestinationMAC(ethHeader->GetSourceMAC());
+		Packet icmpPkt;
+		icmpPkt.PushLayer(icmpEthHeader);
+		icmpPkt.PushLayer(icmpIPHeader);
+		icmpPkt.PushLayer(icmpHeader);
+		icmpPkt.Send(myIface);
 		return;
 	}
 	
@@ -68,6 +84,20 @@ void packetHandler(Packet* packet, void* user){
 	ttl--;
 	if(ttl == 0) {
 		//send ICMP for ttl=0 here
+		ICMP icmpHeader;
+		icmpHeader.SetType(ICMP::TimeExceeded);
+		icmpHeader.SetIdentifier(RNG16());
+		IP icmpIPHeader;
+		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
+		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
+		Ethernet icmpEthHeader;
+		icmpEthHeader.SetSourceMAC(GetMyMAC(myIface));
+		icmpEthHeader.SetDestinationMAC(ethHeader->GetSourceMAC());
+		Packet icmpPkt;
+		icmpPkt.PushLayer(icmpEthHeader);
+		icmpPkt.PushLayer(icmpIPHeader);
+		icmpPkt.PushLayer(icmpHeader);
+		icmpPkt.Send(myIface);
 		return;
 	}
 	ipHeader->SetTTL(ttl);
@@ -92,7 +122,7 @@ int main(int argc, char* argv[]){
 	//set up a sniffer for all interfaces
 	for(string iface : ifaces) {
 		Sniffer sniff("", iface, packetHandler);
-		sniff.Spawn(-1);
+		sniff.Spawn(-1, (void *)&iface);
 	}
 
 	//wait forever
