@@ -121,23 +121,29 @@ void packetHandler(Packet* packet, void* user){
 int main(int argc, char* argv[]){
 
     //First setup your routing table either as global variables or as objects passed to pkt_callback
+
 	parseConfig();
 	cerr<<"finished parsing config"<<endl;
 	arp();
 	cerr<<"finished arping"<<endl;
-
+	string eth0 = "eth0";
+	string eth2 = "eth2";
+	Sniffer sniff("", eth0, packetHandler);
+       	sniff.Spawn(-1, (void *)&eth0);
+	Sniffer sniff2("", eth2, packetHandler);
+	sniff2.Capture(-1, (void *)&eth2);
+	/*
 	//set up a sniffer for all interfaces
-	for(string iface : ifaces) {
-		Sniffer sniff("", iface, packetHandler);
-		sniff.Spawn(-1, (void *)&iface);
-		cerr<<"spawned sniffer"<<endl;
+	auto beforeEnd = ifaces.end()--;
+	for (auto ifaceIter = ifaces.begin(); ifaceIter != beforeEnd; ifaceIter++) {
+		Sniffer sniff("", *ifaceIter, packetHandler);
+		sniff.Spawn(-1, (void *)&*ifaceIter);
+		cerr<<"spawn for " + *ifaceIter<<endl;
 	}
-
-	//wait forever
-	while(true) {
-		sleep(10);
-	}
-	
+	cerr<<"capture for "+*beforeEnd<<endl;
+	Sniffer sniff("", *beforeEnd, packetHandler);
+	sniff.Capture(-1, (void *)&*beforeEnd);
+	*/
 }
 
 void parseConfig(){
