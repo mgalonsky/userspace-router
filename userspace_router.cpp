@@ -27,6 +27,9 @@ void parseConfig();
 // ARP to complete setting up the tables
 void arp();
 
+// Convert an ip to its /24 subnet
+string IPtoSubnet(string &IP);
+
 map<string, string> destToNextHop;
 map<string, HeaderFields> nextHopToHeaderFields;
 set<string> localIPs;
@@ -48,9 +51,9 @@ void packetHandler(Packet* packet, void* user){
 	}
 	
 	string DestIP = ipHeader->GetDestinationIP();
-
+	string DestNet = IPtoSubnet(DestIP);
 	//check if local to this machine (if it is, return)
-	if (localIPs.find(DestIP) != localIPs.end()) {
+	if (localIPs.find(DestNet) != localIPs.end()) {
 		return;
 	}
 
@@ -142,7 +145,8 @@ void arp()
 		
 		ifaces.insert(curr_pair.second.iface);
 		string myIP = GetMyIP(curr_pair.second.iface);
-		localIPs.insert(myIP);
+		string myNet = IPtoSubnet(myIP);
+		localIPs.insert(myNet);
 
 		arpHeader.SetOperation(ARP::Request);
 		arpHeader.SetSenderIP(myIP);
@@ -160,4 +164,10 @@ void arp()
 		curr_pair.second.destMAC = arp_layer->GetSenderMAC();
 
 	}
+}
+
+string IPtoSubnet(string &ip) {
+	int pos = ip.rfind(".");
+	string net = ip.substr(0, pos);
+	return net;
 }
