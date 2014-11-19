@@ -8,6 +8,7 @@
 #include <string>
 #include <crafter.h>
 #include <fstream>
+#include <unistd.h>
 
 using namespace std;
 using namespace Crafter;
@@ -37,6 +38,7 @@ set<string> ifaces;
 
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
+	cerr<<"handling a packet"<<endl;	
 
 	string myIface = *(string*) user;
 
@@ -56,10 +58,11 @@ void packetHandler(Packet* packet, void* user){
 	string DestNet = IPtoSubnet(DestIP);
 	//check if local to this machine (if it is, return)
 	if (localIPs.find(DestNet) != localIPs.end()) {
+		cerr<<"packet was in local subnet"<<endl;
 		return;
 	}
 
-	auto destIter = destToNextHop.find(DestIP);
+	auto destIter = destToNextHop.find(DestNet);
 	//see if DestIP is in our routing tables
 	if (destIter == destToNextHop.end()) {
 		//send ICMP for destination unreachable here
@@ -79,6 +82,7 @@ void packetHandler(Packet* packet, void* user){
 		icmpPkt.Send(myIface);
 		return;
 	}
+	cerr<<"nextHopIP is: " + destIter->second <<endl;
 	
 	int ttl = ipHeader->GetTTL();
 	ttl--;
@@ -118,15 +122,22 @@ int main(int argc, char* argv[]){
 
     //First setup your routing table either as global variables or as objects passed to pkt_callback
 	parseConfig();
+	cerr<<"finished parsing config"<<endl;
+	arp();
+	cerr<<"finished arping"<<endl;
 
 	//set up a sniffer for all interfaces
 	for(string iface : ifaces) {
 		Sniffer sniff("", iface, packetHandler);
 		sniff.Spawn(-1, (void *)&iface);
+		cerr<<"spawned sniffer"<<endl;
 	}
 
 	//wait forever
-	while(1){}
+	while(true) {
+		sleep(10);
+	}
+	
 }
 
 void parseConfig(){
@@ -150,15 +161,20 @@ void parseConfig(){
 			nextHop = line.substr(0, pos);
 			line.erase(0, pos+1);
 			iface = line;
+			cerr<<"Parsed the line with dest: "+dest+", nextHop: "+nextHop+", and iface: "+iface<<endl;
 
-			destToNextHop.insert(pair<string, string>(dest, nextHop));
+			if(dest == "fake") {
+				ifaces.insert(iface);
+			}
+			else {
+				destToNextHop.insert(pair<string, string>(dest, nextHop));
+				//Create a HeaderFields to store as much as possible without arping
+				HeaderFields newHeaderField;
+				newHeaderField.iface = iface;
+				newHeaderField.sourceMAC = GetMyMAC(iface);
 
-			//Create a HeaderFields to store as much as possible without arping
-			HeaderFields newHeaderField;
-			newHeaderField.iface = iface;
-			newHeaderField.sourceMAC = GetMyMAC(iface);
-
-			nextHopToHeaderFields.insert(pair<string, HeaderFields>(nextHop, newHeaderField));
+				nextHopToHeaderFields.insert(pair<string, HeaderFields>(nextHop, newHeaderField));
+			}
 		}
 	}
 }
