@@ -30,6 +30,7 @@ void arp();
 map<string, string> destToNextHop;
 map<string, HeaderFields> nextHopToHeaderFields;
 set<string> localIPs;
+set<string> ifaces;
 
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
@@ -82,16 +83,17 @@ void packetHandler(Packet* packet, void* user){
 
 int main(int argc, char* argv[]){
 
-	string iface = argv[1];
-	Sniffer sniff("", iface, packetHandler);
-	sniff.Capture(5);
     //First setup your routing table either as global variables or as objects passed to pkt_callback
-    //And any other init code
+	parseConfig();
 
 	//set up a sniffer for all interfaces
-	//if possible get 1 that uses all interfaces and call caputre on it with -1
-	//otherwise will have to create a seperate sniffer for each interface and spawn each one before blocking to avoid finishing
+	for(string iface : ifaces) {
+		Sniffer sniff("", iface, packetHandler);
+		sniff.Spawn(-1);
+	}
 
+	//wait forever
+	while(1){}
 }
 
 void parseConfig(){
@@ -138,6 +140,7 @@ void arp()
 		ethHeader.SetSourceMAC(curr_pair.second.sourceMAC);
 		ethHeader.SetDestinationMAC("ff:ff:ff:ff:ff:ff");
 		
+		ifaces.insert(curr_pair.second.iface);
 		string myIP = GetMyIP(curr_pair.second.iface);
 		localIPs.insert(myIP);
 
