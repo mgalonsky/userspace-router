@@ -69,6 +69,9 @@ void packetHandler(Packet* packet, void* user){
 		ICMP icmpHeader;
 		icmpHeader.SetType(ICMP::DestinationUnreachable);
 		icmpHeader.SetIdentifier(RNG16());
+		byte* buffer = new byte[ipHeader->GetSize()];
+		ipHeader->GetRawData(buffer);
+		icmpHeader.SetPayload(buffer, ipHeader->GetHeaderSize() + 8);
 		IP icmpIPHeader;
 		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
 		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
@@ -91,6 +94,9 @@ void packetHandler(Packet* packet, void* user){
 		ICMP icmpHeader;
 		icmpHeader.SetType(ICMP::TimeExceeded);
 		icmpHeader.SetIdentifier(RNG16());
+		byte* buffer = new byte[ipHeader->GetSize()];
+		ipHeader->GetRawData(buffer);
+		icmpHeader.SetPayload(buffer, ipHeader->GetHeaderSize() + 8);
 		IP icmpIPHeader;
 		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
 		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
@@ -169,10 +175,7 @@ void parseConfig(){
 			iface = line;
 			cerr<<"Parsed the line with dest: "+dest+", nextHop: "+nextHop+", and iface: "+iface<<endl;
 
-			if(dest == "fake") {
-				ifaces.insert(iface);
-			}
-			else {
+			if(dest != "fake") {
 				destToNextHop.insert(pair<string, string>(dest, nextHop));
 				//Create a HeaderFields to store as much as possible without arping
 				HeaderFields newHeaderField;
@@ -181,6 +184,12 @@ void parseConfig(){
 
 				nextHopToHeaderFields.insert(pair<string, HeaderFields>(nextHop, newHeaderField));
 			}
+			cerr << "found iface: "+iface << endl;
+			ifaces.insert(iface);
+			string myIP = GetMyIP(iface);
+			string myNet = IPtoSubnet(myIP);
+			cerr << "found local subnet: "+myNet<<endl;
+			localIPs.insert(myNet);
 		}
 	}
 }
@@ -195,13 +204,8 @@ void arp()
 		ethHeader.SetSourceMAC(curr_pair.second.sourceMAC);
 		ethHeader.SetDestinationMAC("ff:ff:ff:ff:ff:ff");
 		
-		ifaces.insert(curr_pair.second.iface);
-		string myIP = GetMyIP(curr_pair.second.iface);
-		string myNet = IPtoSubnet(myIP);
-		localIPs.insert(myNet);
-
 		arpHeader.SetOperation(ARP::Request);
-		arpHeader.SetSenderIP(myIP);
+		arpHeader.SetSenderIP(GetMyIP(curr_pair.second.iface));
 		arpHeader.SetSenderMAC(curr_pair.second.sourceMAC);
 		arpHeader.SetTargetIP(curr_pair.first);
 
