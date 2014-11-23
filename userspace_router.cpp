@@ -38,7 +38,6 @@ set<string> ifaces;
 
 //Your per-packet router code goes here
 void packetHandler(Packet* packet, void* user){
-	cerr<<"handling a packet"<<endl;	
 
 	string myIface = *(string*) user;
 
@@ -46,11 +45,17 @@ void packetHandler(Packet* packet, void* user){
 	IP* ipHeader = packet->GetLayer<IP>();
 
 	if (ethHeader == nullptr) {
-		cout << "ethHeader was null" << endl;
+		cerr << "ethHeader was null" << endl;
 		return;
 	}
+
+	if(ethHeader->GetSourceMAC() == GetMyMAC(myIface)) {
+		cerr<< "sourceMAC was ourselves" << endl;
+		return;
+	}
+
 	if (ipHeader == nullptr) {
-		cout << "ipHeader was null" << endl;
+		cerr << "ipHeader was null" << endl;
 		return;
 	}
 	
@@ -65,13 +70,14 @@ void packetHandler(Packet* packet, void* user){
 	auto destIter = destToNextHop.find(DestNet);
 	//see if DestIP is in our routing tables
 	if (destIter == destToNextHop.end()) {
+		cerr << "packet was unreachable" << endl;
 		//send ICMP for destination unreachable here
 		ICMP icmpHeader;
 		icmpHeader.SetType(ICMP::DestinationUnreachable);
 		icmpHeader.SetIdentifier(RNG16());
 		byte* buffer = new byte[ipHeader->GetSize()];
 		ipHeader->GetRawData(buffer);
-		icmpHeader.SetPayload(buffer, ipHeader->GetHeaderSize() + 8);
+		icmpHeader.AddPayload(buffer, ipHeader->GetHeaderSize() + 8);
 		IP icmpIPHeader;
 		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
 		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
@@ -83,11 +89,12 @@ void packetHandler(Packet* packet, void* user){
 		icmpPkt.PushLayer(icmpIPHeader);
 		icmpPkt.PushLayer(icmpHeader);
 		icmpPkt.Send(myIface);
+		delete[] buffer;
 		return;
 	}
-	cerr<<"nextHopIP is: " + destIter->second <<endl;
 	
 	int ttl = ipHeader->GetTTL();
+	cerr << "ttl was: " << ttl << endl;
 	ttl--;
 	if(ttl == 0) {
 		//send ICMP for ttl=0 here
@@ -96,7 +103,7 @@ void packetHandler(Packet* packet, void* user){
 		icmpHeader.SetIdentifier(RNG16());
 		byte* buffer = new byte[ipHeader->GetSize()];
 		ipHeader->GetRawData(buffer);
-		icmpHeader.SetPayload(buffer, ipHeader->GetHeaderSize() + 8);
+		icmpHeader.AddPayload(buffer, ipHeader->GetHeaderSize() + 8);
 		IP icmpIPHeader;
 		icmpIPHeader.SetDestinationIP(ipHeader->GetSourceIP());
 		icmpIPHeader.SetSourceIP(GetMyIP(myIface));
@@ -132,7 +139,7 @@ int main(int argc, char* argv[]){
 	cerr<<"finished parsing config"<<endl;
 	arp();
 	cerr<<"finished arping"<<endl;
-	string eth0 = "eth0";
+	string eth0 = "eth3";
 	string eth2 = "eth2";
 	Sniffer sniff("", eth0, packetHandler);
        	sniff.Spawn(-1, (void *)&eth0);
